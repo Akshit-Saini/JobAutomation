@@ -46,6 +46,11 @@ load_dotenv()
 
 from config.profile import PROFILE, SEARCH_QUERIES, GREENHOUSE_SLUGS, LEVER_SLUGS, ASHBY_SLUGS
 from core.gmail_token import get_gmail_token
+from core.wellfound_apify import (
+    WELLFOUND_ACTOR_ID,
+    normalize_wellfound_row,
+    wellfound_run_input,
+)
 
 log = logging.getLogger("agent1_scout")
 logging.basicConfig(level=logging.INFO,
@@ -811,8 +816,8 @@ async def fetch_apify_google_jobs() -> list[tuple]:
 
 async def fetch_apify_wellfound() -> list[tuple]:
     """
-    Wellfound (AngelList) — startup equity roles, remote-friendly.
-    Actor: crawlerbros/wellfound-scraper   (~$0.003/result)
+    Wellfound (AngelList) startup equity roles, remote-friendly.
+    Actor: johnvc/wellfound-jobs-api
     Run Mon+Thu to save credits.
     """
     if not APIFY_TOKEN:
@@ -821,12 +826,12 @@ async def fetch_apify_wellfound() -> list[tuple]:
     if today not in (0, 3):
         log.info("Wellfound: skipped (runs Mon+Thu only)"); return []
     results = await run_apify_actor(
-        "crawlerbros~wellfound-scraper",
-        {
-            "role":     "software-engineer",
-            "location": "Remote",
-            "maxItems": APIFY_MAX_RESULTS,
-        }
+        WELLFOUND_ACTOR_ID,
+        wellfound_run_input(
+            role="software-engineer",
+            location="Remote",
+            max_items=APIFY_MAX_RESULTS,
+        ),
     )
     jobs = [(r, "wellfound_apify") for r in results if isinstance(r, dict)]
     log.info(f"Apify Wellfound: {len(jobs)} listings")
@@ -918,11 +923,13 @@ def normalise(raw: dict, source: str) -> Job:
         posted  = raw.get("posted_at", "") or raw.get("date_posted", "")
 
     elif source == "wellfound_apify":
-        title   = raw.get("jobTitle", "") or raw.get("title", "")
-        company = raw.get("companyName", "") or raw.get("company", "")
-        loc     = raw.get("location", "Remote")
-        url     = raw.get("jobUrl", "") or raw.get("url", "")
-        desc    = raw.get("description", "") or raw.get("jobDescription", "")
+        fields  = normalize_wellfound_row(raw)
+        title   = fields["title"]
+        company = fields["company"]
+        loc     = fields["location"]
+        url     = fields["url"]
+        desc    = fields["description"]
+        posted  = fields["posted_at"]
 
     elif source == "remotive":
         title   = raw.get("title", "")
